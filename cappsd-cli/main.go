@@ -25,7 +25,7 @@ func main() {
 
 	endpoint := flag.String("endpoint", "", "endpoint to hit: ping, deploy, applications, application, start, restart, stop, status, purge")
 	sock := flag.String("sock", "/var/run/cappsd.sock",
-		"Location of Cappsd socket. Defaults to /var/run/cappsd.sock")
+		"Location of Cappsd socket.")
 	id := flag.String("id", "", "Container ID for targeted requests")
 	appName := flag.String("app_name", "", "App name")
 	version := flag.String("version", "", "App version")
@@ -46,7 +46,7 @@ func main() {
 		os.Exit(12)
 	}
 
-	timeout := time.Duration(300 * time.Second)
+	timeout := time.Duration(600 * time.Second)
 	client := http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
@@ -93,37 +93,54 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error: %s\n", err)
 			os.Exit(14)
 		}
+		fi, _ := file.Stat()
 		defer file.Close()
 
 		var req *http.Request
 		uri = "http://unix/application/deploy"
-		reqBody := &bytes.Buffer{}
-		writer := multipart.NewWriter(reqBody)
-		part, err := writer.CreateFormFile("artifact", filepath.Base(*tarFile))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %s\n", err)
-			os.Exit(15)
-		}
 
-		_, err = io.Copy(part, file)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %s\n", err)
-			os.Exit(16)
-		}
+    byteBuf := &bytes.Buffer{}
+    mpWriter := multipart.NewWriter(byteBuf)
+    _ = mpWriter.WriteField("metadata", `{"Name":"`+*appName+`", "Version":"`+*version+`"}`)
+    mpWriter.CreateFormFile("artifact", filepath.Base(*tarFile))
+    contentType := mpWriter.FormDataContentType()
 
-		_ = writer.WriteField("metadata", `{"Name":"`+*appName+`", "Version":"`+*version+`"}`)
+    nmulti := byteBuf.Len()
+    multi := make([]byte, nmulti)
+    _, _ = byteBuf.Read(multi)
 
-		err = writer.Close()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %s\n", err)
-			os.Exit(17)
-		}
+    mpWriter.Close()
+    nboundary := byteBuf.Len()
+    lastBoundary := make([]byte, nboundary)
+    _, _ = byteBuf.Read(lastBoundary)
+    totalSize := int64(nmulti) + fi.Size() + int64(nboundary)
 
-		req, err = http.NewRequest("POST", uri, reqBody)
+		rd, wr := io.Pipe()
+		defer rd.Close()
+
+		// writing without a reader will deadlock so write in a goroutine
+		go func() {
+		  defer wr.Close()
+		  _, _ = wr.Write(multi)
+			buf := make([]byte, 1000000)
+			for {
+			    n, err := file.Read(buf)
+			    if err != nil {
+			        break
+			    }
+			    _, _ = wr.Write(buf[:n])
+			}
+			_, _ = wr.Write(lastBoundary)
+		}()
+
+		req, err = http.NewRequest("POST", uri, rd)
 		if err != nil {
 			break
 		}
-		req.Header.Set("Content-Type", writer.FormDataContentType())
+
+		req.Header.Set("Content-Type", contentType)
+		req.ContentLength = totalSize
+
 		resp, err = client.Do(req)
 
 	default:
@@ -137,19 +154,23 @@ func main() {
 		os.Exit(18)
 	} else {
 		respBody := &bytes.Buffer{}
+		if resp != nil {
+			_, err := respBody.ReadFrom(resp.Body)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %s\n", err)
+				os.Exit(19)
+			}
 
-		_, err := respBody.ReadFrom(resp.Body)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %s\n", err)
-			os.Exit(19)
+			if resp.StatusCode != 200 {
+				fmt.Fprintf(os.Stderr, "HTTP bad Response: %d, %s\n", resp.StatusCode, respBody)
+				os.Exit(20)
+			}
+			resp.Body.Close()
+			fmt.Println(respBody)
+		} else {
+			fmt.Fprintf(os.Stderr, "error: Got null response from cappsd server.\n")
+			os.Exit(21)
 		}
-
-		if resp.StatusCode != 200 {
-			fmt.Fprintf(os.Stderr, "HTTP bad Response: %d, %s\n", resp.StatusCode, respBody)
-			os.Exit(20)
-		}
-		resp.Body.Close()
-		fmt.Println(respBody)
 	}
 	os.Exit(0)
 }
