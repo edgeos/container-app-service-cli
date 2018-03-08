@@ -6,7 +6,7 @@
 # with the terms and conditions stipulated in the agreement/contract
 # under which the software has been supplied.
 
-FROM registry.gear.ge.com/predix_edge/golang-#{ARCH}:1.8
+FROM registry.gear.ge.com/predix_edge/golang-amd64:1.8
 
 RUN set -ex \
 	&& apk add --no-cache \
