@@ -51,5 +51,6 @@ go install                                            \
     -ldflags "                                        \
         -X ${PKG}/version.Version=$VERSION            \
         -X ${PKG}/version.GitCommit=$GITCOMMIT        \
-        -X ${PKG}/version.BuildStamp=$BUILDSTAMP"     \
+        -X ${PKG}/version.BuildStamp=$BUILDSTAMP      \
+        -s -w"     \
     $(go list ./... | grep -v '/vendor')

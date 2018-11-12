@@ -46,7 +46,7 @@ func main() {
 		os.Exit(12)
 	}
 
-	timeout := time.Duration(600 * time.Second)
+	timeout := time.Duration(300 * time.Second)
 	client := http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
@@ -93,54 +93,37 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error: %s\n", err)
 			os.Exit(14)
 		}
-		fi, _ := file.Stat()
 		defer file.Close()
 
 		var req *http.Request
 		uri = "http://unix/application/deploy"
+		reqBody := &bytes.Buffer{}
+		writer := multipart.NewWriter(reqBody)
+		part, err := writer.CreateFormFile("artifact", filepath.Base(*tarFile))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %s\n", err)
+			os.Exit(15)
+		}
 
-    byteBuf := &bytes.Buffer{}
-    mpWriter := multipart.NewWriter(byteBuf)
-    _ = mpWriter.WriteField("metadata", `{"Name":"`+*appName+`", "Version":"`+*version+`"}`)
-    mpWriter.CreateFormFile("artifact", filepath.Base(*tarFile))
-    contentType := mpWriter.FormDataContentType()
+		_, err = io.Copy(part, file)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %s\n", err)
+			os.Exit(16)
+		}
 
-    nmulti := byteBuf.Len()
-    multi := make([]byte, nmulti)
-    _, _ = byteBuf.Read(multi)
+		_ = writer.WriteField("metadata", `{"Name":"`+*appName+`", "Version":"`+*version+`"}`)
 
-    mpWriter.Close()
-    nboundary := byteBuf.Len()
-    lastBoundary := make([]byte, nboundary)
-    _, _ = byteBuf.Read(lastBoundary)
-    totalSize := int64(nmulti) + fi.Size() + int64(nboundary)
+		err = writer.Close()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %s\n", err)
+			os.Exit(17)
+		}
 
-		rd, wr := io.Pipe()
-		defer rd.Close()
-
-		// writing without a reader will deadlock so write in a goroutine
-		go func() {
-		  defer wr.Close()
-		  _, _ = wr.Write(multi)
-			buf := make([]byte, 1000000)
-			for {
-			    n, err := file.Read(buf)
-			    if err != nil {
-			        break
-			    }
-			    _, _ = wr.Write(buf[:n])
-			}
-			_, _ = wr.Write(lastBoundary)
-		}()
-
-		req, err = http.NewRequest("POST", uri, rd)
+		req, err = http.NewRequest("POST", uri, reqBody)
 		if err != nil {
 			break
 		}
-
-		req.Header.Set("Content-Type", contentType)
-		req.ContentLength = totalSize
-
+		req.Header.Set("Content-Type", writer.FormDataContentType())
 		resp, err = client.Do(req)
 
 	default:
