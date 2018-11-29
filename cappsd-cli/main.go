@@ -24,7 +24,7 @@ import (
 func main() {
 
 	endpoint := flag.String("endpoint", "", "endpoint to hit: ping, deploy, deploy-persistent, persistent-applications, application, start, restart, stop, status, purge, purge-persistent")
-	sock := flag.String("sock", "/var/run/cappsd/cappsd.sock",
+	sock := flag.String("sock", "/var/run/cappsd.sock",
 		"Location of Cappsd socket.")
 	id := flag.String("id", "", "Container ID for targeted requests")
 	appName := flag.String("app_name", "", "App name")
