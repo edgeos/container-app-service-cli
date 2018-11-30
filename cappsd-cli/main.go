@@ -23,13 +23,15 @@ import (
 
 func main() {
 
-	endpoint := flag.String("endpoint", "", "endpoint to hit: ping, deploy, applications, application, start, restart, stop, status, purge")
-	sock := flag.String("sock", "/var/run/cappsd.sock",
+	endpoint := flag.String("endpoint", "", "endpoint to hit: ping, deploy, deploy-persistent, persistent-applications, application, start, restart, stop, status, purge, purge-persistent")
+	sock := flag.String("sock", "/var/run/cappsd/cappsd.sock",
 		"Location of Cappsd socket.")
 	id := flag.String("id", "", "Container ID for targeted requests")
 	appName := flag.String("app_name", "", "App name")
 	version := flag.String("version", "", "App version")
 	tarFile := flag.String("tar_file", "", "Path to tar file for app")
+	monitor := flag.String("monitor", "no", "request App monitoring: yes/no")
+	delayStart := flag.String("delay_start", "no", "delay start of deployed app until next start: yes/no")
 
 	flag.Parse()
 
@@ -65,8 +67,8 @@ func main() {
 	case "ping":
 		uri = "http://unix/ping"
 		resp, err = client.Get(uri)
-	case "applications":
-		uri = "http://unix/applications"
+	case "applications", "persistent-applications":
+		uri = "http://unix/" + *endpoint
 		resp, err = client.Get(uri)
 	case "application":
 		uri = "http://unix/application/" + *id
@@ -84,9 +86,12 @@ func main() {
 		uri = "http://unix/application/status/" + *id
 		resp, err = client.Get(uri)
 	case "purge":
-		uri = "http://unix/application/purge/" + *id
+		uri = "http://unix/application/" + *endpoint + "/" + *id
 		resp, err = client.Post(uri, "", reader)
-	case "deploy":
+	case "purge-persistent":
+		uri = "http://unix/application/" + *endpoint + "/" + *appName
+		resp, err = client.Post(uri, "", reader)
+	case "deploy", "deploy-persistent":
 		var file *os.File
 		file, err = os.Open(*tarFile)
 		if err != nil {
@@ -96,7 +101,7 @@ func main() {
 		defer file.Close()
 
 		var req *http.Request
-		uri = "http://unix/application/deploy"
+		uri = "http://unix/application/" + *endpoint
 		reqBody := &bytes.Buffer{}
 		writer := multipart.NewWriter(reqBody)
 		part, err := writer.CreateFormFile("artifact", filepath.Base(*tarFile))
@@ -111,7 +116,7 @@ func main() {
 			os.Exit(16)
 		}
 
-		_ = writer.WriteField("metadata", `{"Name":"`+*appName+`", "Version":"`+*version+`"}`)
+		_ = writer.WriteField("metadata", `{"Name":"`+*appName+`", "Version":"`+*version+`", "Monitor":"`+*monitor+`", "DelayStart":"`+*delayStart+`"}`)
 
 		err = writer.Close()
 		if err != nil {
