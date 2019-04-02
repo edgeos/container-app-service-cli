@@ -23,7 +23,7 @@ import (
 
 func main() {
 
-	endpoint := flag.String("endpoint", "", "endpoint to hit: ping, deploy, deploy-persistent, persistent-applications, application, start, restart, stop, status, purge, purge-persistent")
+	endpoint := flag.String("endpoint", "", "endpoint to hit: ping, deploy, deploy-persistent, persistent-applications, applications, application, start, restart, stop, status, purge, purge-persistent, kill")
 	sock := flag.String("sock", "/var/run/cappsd/cappsd.sock",
 		"Location of Cappsd socket.")
 	id := flag.String("id", "", "Container ID for targeted requests")
@@ -64,28 +64,16 @@ func main() {
 	var reader io.Reader
 
 	switch *endpoint {
-	case "ping":
-		uri = "http://unix/ping"
-		resp, err = client.Get(uri)
-	case "applications", "persistent-applications":
+	case "ping", "applications", "persistent-applications":
 		uri = "http://unix/" + *endpoint
 		resp, err = client.Get(uri)
 	case "application":
 		uri = "http://unix/application/" + *id
 		resp, err = client.Get(uri)
-	case "restart":
-		uri = "http://unix/application/restart/" + *id
-		resp, err = client.Post(uri, "", reader)
-	case "start":
-		uri = "http://unix/application/start/" + *id
-		resp, err = client.Post(uri, "", reader)
-	case "stop":
-		uri = "http://unix/application/stop/" + *id
-		resp, err = client.Post(uri, "", reader)
 	case "status":
 		uri = "http://unix/application/status/" + *id
 		resp, err = client.Get(uri)
-	case "purge":
+	case "start", "restart", "stop", "purge", "kill":
 		uri = "http://unix/application/" + *endpoint + "/" + *id
 		resp, err = client.Post(uri, "", reader)
 	case "purge-persistent":
